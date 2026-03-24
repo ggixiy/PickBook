@@ -1,0 +1,29 @@
+spring:
+  datasource:
+    # Змініть на свої дані PostgreSQL
+    url: jdbc:postgresql://localhost:5432/pickbook_db
+    username: postgres
+    password: "0000"
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update   # Автоматично створює/оновлює таблиці
+    show-sql: true       # Показує SQL запити в консолі (корисно для навчання)
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+server:
+  port: 8080
+
+# JWT налаштування — обов'язково змініть secret на щось довге і випадкове!
+jwt:
+  secret: "PickBookSuperSecretKeyThatShouldBe256BitsLongForSecurity!!"
+  expiration: 86400000      # 24 години в мілісекундах
+  refresh-expiration: 604800000  # 7 днів
+
+# CORS — дозволяємо фронтенду на localhost:5173 звертатись до API
+cors:
+  allowed-origins: "http://localhost:5173"

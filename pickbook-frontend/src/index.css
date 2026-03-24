@@ -1,0 +1,80 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f0e11;
+  --bg2: #1a1820;
+  --bg3: #232130;
+  --border: #2e2b3a;
+  --text: #e8e4f0;
+  --text2: #9b96b0;
+  --purple: #8b5cf6;
+  --purple-dark: #6d42d4;
+  --coral: #f97066;
+  --teal: #2dd4bf;
+  --radius: 12px;
+  --font: 'Georgia', serif;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+h1, h2, h3 { font-family: var(--font); font-weight: normal; }
+
+a { color: var(--purple); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: opacity 0.15s, transform 0.1s;
+}
+button:hover { opacity: 0.88; }
+button:active { transform: scale(0.98); }
+
+.btn-primary {
+  background: var(--purple);
+  color: white;
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--text2);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover { border-color: var(--purple); color: var(--purple); }
+
+input, textarea, select {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: var(--text);
+  font-size: 14px;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s;
+}
+input:focus, textarea:focus, select:focus {
+  border-color: var(--purple);
+}
+
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+.error { color: var(--coral); font-size: 13px; margin-top: 6px; }
+.muted { color: var(--text2); font-size: 13px; }
+
+/* Зірки рейтингу */
+.stars { color: #f59e0b; letter-spacing: 2px; }
