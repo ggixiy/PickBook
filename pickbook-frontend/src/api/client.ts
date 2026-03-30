@@ -1,7 +1,11 @@
 import axios from 'axios';
 
 // Створюємо екземпляр axios із базовим URL
-const api = axios.create({ baseURL: '/api' });
+// Якщо є VITE_API_URL (на Vercel), беремо лінку Render + /api.
+// Якщо ні (на локалці), використовуємо '/api' для локального проксі з vite.config.ts.
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api'
+});
 
 // Інтерцептор — автоматично додає JWT токен до кожного запиту
 api.interceptors.request.use(config => {
