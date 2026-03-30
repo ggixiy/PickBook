@@ -3,6 +3,8 @@ import axios from 'axios';
 // Створюємо екземпляр axios із базовим URL
 // Якщо є VITE_API_URL (на Vercel), беремо лінку Render + /api.
 // Якщо ні (на локалці), використовуємо '/api' для локального проксі з vite.config.ts.
+
+// @ts-ignore
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api'
 });
