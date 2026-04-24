@@ -1,5 +1,3 @@
-// Всі типи даних які приходять з API
-
 export interface User {
   username: string;
   role: 'AUTHOR' | 'READER';
@@ -13,9 +11,12 @@ export interface AuthResponse {
 
 export interface MusicMarker {
   id?: number;
-  charPosition: number;  // Позиція в тексті де починається музика
-  musicUrl: string;      // YouTube або SoundCloud посилання
+  charPosition: number;      // початок виділеного фрагменту
+  charPositionEnd?: number;  // кінець виділеного фрагменту
+  musicUrl: string;
   trackTitle?: string;
+  startTime?: number;        // секунда відео з якої починати
+  endTime?: number;          // секунда відео до якої грати
 }
 
 export interface Comment {
@@ -28,7 +29,7 @@ export interface Comment {
 export interface Work {
   id: number;
   title: string;
-  content: string;       // Може бути превью або повний текст
+  content: string;
   description?: string;
   genre?: 'STORY' | 'POEM' | 'ESSAY';
   authorUsername: string;
@@ -52,5 +53,5 @@ export interface Page<T> {
   content: T[];
   totalPages: number;
   totalElements: number;
-  number: number;  // Поточна сторінка
+  number: number;
 }

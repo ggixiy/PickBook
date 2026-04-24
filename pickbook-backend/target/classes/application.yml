@@ -1,9 +1,9 @@
 spring:
   datasource:
     # Змініть на свої дані PostgreSQL
-    url: jdbc:postgresql://localhost:5432/pickbook_db
-    username: postgres
-    password: "0000"
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/pickbook_db}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:0000}
     driver-class-name: org.postgresql.Driver
 
   jpa:

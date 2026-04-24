@@ -21,7 +21,6 @@ public class WorkService {
     private final CommentRepository commentRepository;
     private final RatingRepository ratingRepository;
 
-    // Створити новий твір
     @Transactional
     public WorkResponse createWork(WorkRequest request, String authorEmail) {
         User author = userRepository.findByEmail(authorEmail)
@@ -37,7 +36,6 @@ public class WorkService {
 
         workRepository.save(work);
 
-        // Зберігаємо музичні мітки якщо вони є
         if (request.getMusicMarkers() != null) {
             saveMusicMarkers(request.getMusicMarkers(), work);
         }
@@ -45,13 +43,11 @@ public class WorkService {
         return toResponse(work);
     }
 
-    // Оновити існуючий твір
     @Transactional
     public WorkResponse updateWork(Long workId, WorkRequest request, String authorEmail) {
         Work work = workRepository.findById(workId)
                 .orElseThrow(() -> new RuntimeException("Твір не знайдено"));
 
-        // Тільки автор може редагувати свій твір
         if (!work.getAuthor().getEmail().equals(authorEmail)) {
             throw new AccessDeniedException("Ви не можете редагувати цей твір");
         }
@@ -63,7 +59,6 @@ public class WorkService {
             work.setGenre(Work.Genre.valueOf(request.getGenre()));
         }
 
-        // Оновлюємо музичні мітки: спочатку видаляємо старі, потім додаємо нові
         musicMarkerRepository.deleteByWorkId(workId);
         if (request.getMusicMarkers() != null) {
             saveMusicMarkers(request.getMusicMarkers(), work);
@@ -72,34 +67,29 @@ public class WorkService {
         return toResponse(workRepository.save(work));
     }
 
-    // Отримати твір за ID
     public WorkResponse getWork(Long workId) {
         Work work = workRepository.findById(workId)
                 .orElseThrow(() -> new RuntimeException("Твір не знайдено"));
         return toResponse(work);
     }
 
-    // Всі твори (для головної сторінки), з пагінацією
     public Page<WorkResponse> getAllWorks(int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
         return workRepository.findAllByOrderByCreatedAtDesc(pageable)
-                .map(this::toResponseShort); // Короткий варіант — без повного тексту
+                .map(this::toResponseShort);
     }
 
-    // Твори конкретного автора
     public List<WorkResponse> getWorksByAuthor(Long authorId) {
         return workRepository.findByAuthorIdOrderByCreatedAtDesc(authorId)
                 .stream().map(this::toResponseShort).collect(Collectors.toList());
     }
 
-    // Пошук за заголовком
     public Page<WorkResponse> searchWorks(String query, int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
         return workRepository.searchByTitle(query, pageable)
                 .map(this::toResponseShort);
     }
 
-    // Видалити твір
     @Transactional
     public void deleteWork(Long workId, String authorEmail) {
         Work work = workRepository.findById(workId)
@@ -110,7 +100,6 @@ public class WorkService {
         workRepository.delete(work);
     }
 
-    // Додати коментар
     @Transactional
     public CommentDto addComment(Long workId, CommentRequest request, String userEmail) {
         Work work = workRepository.findById(workId)
@@ -125,11 +114,9 @@ public class WorkService {
                 .build();
 
         Comment saved = commentRepository.save(comment);
-        return new CommentDto(saved.getId(), saved.getText(),
-                user.getUsername(), saved.getCreatedAt());
+        return new CommentDto(saved.getId(), saved.getText(), user.getUsername(), saved.getCreatedAt());
     }
 
-    // Поставити або оновити оцінку
     @Transactional
     public void rateWork(Long workId, RatingRequest request, String userEmail) {
         Work work = workRepository.findById(workId)
@@ -137,79 +124,76 @@ public class WorkService {
         User user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new RuntimeException("Користувача не знайдено"));
 
-        // Якщо вже оцінював — оновлюємо, якщо ні — створюємо
         Rating rating = ratingRepository.findByWorkIdAndUserId(workId, user.getId())
                 .orElse(Rating.builder().work(work).user(user).build());
         rating.setScore(request.getScore());
         ratingRepository.save(rating);
     }
 
-    // --- Допоміжні методи ---
-
     private void saveMusicMarkers(List<MusicMarkerDto> dtos, Work work) {
         List<MusicMarker> markers = dtos.stream().map(dto ->
                 MusicMarker.builder()
                         .charPosition(dto.getCharPosition())
+                        .charPositionEnd(dto.getCharPositionEnd())
                         .musicUrl(dto.getMusicUrl())
                         .trackTitle(dto.getTrackTitle())
+                        .startTime(dto.getStartTime())
+                        .endTime(dto.getEndTime())
                         .work(work)
                         .build()
         ).collect(Collectors.toList());
         musicMarkerRepository.saveAll(markers);
     }
 
-    // Повний варіант відповіді (з текстом, коментарями, мітками)
     private WorkResponse toResponse(Work work) {
         List<MusicMarkerDto> markers = musicMarkerRepository
                 .findByWorkIdOrderByCharPositionAsc(work.getId())
-                .stream().map(m -> new MusicMarkerDto(
-                        m.getId(), m.getCharPosition(), m.getMusicUrl(), m.getTrackTitle()))
+                .stream().map(m -> MusicMarkerDto.builder()
+                        .id(m.getId())
+                        .charPosition(m.getCharPosition())
+                        .charPositionEnd(m.getCharPositionEnd())
+                        .musicUrl(m.getMusicUrl())
+                        .trackTitle(m.getTrackTitle())
+                        .startTime(m.getStartTime())
+                        .endTime(m.getEndTime())
+                        .build())
                 .collect(Collectors.toList());
 
         List<CommentDto> comments = commentRepository
                 .findByWorkIdOrderByCreatedAtDesc(work.getId())
-                .stream().map(c -> new CommentDto(
-                        c.getId(), c.getText(), c.getUser().getUsername(), c.getCreatedAt()))
+                .stream().map(c -> new CommentDto(c.getId(), c.getText(),
+                        c.getUser().getUsername(), c.getCreatedAt()))
                 .collect(Collectors.toList());
 
         Double avg = ratingRepository.findAverageScoreByWorkId(work.getId());
         long count = ratingRepository.countByWorkId(work.getId());
 
         return WorkResponse.builder()
-                .id(work.getId())
-                .title(work.getTitle())
-                .content(work.getContent())
+                .id(work.getId()).title(work.getTitle()).content(work.getContent())
                 .description(work.getDescription())
                 .genre(work.getGenre() != null ? work.getGenre().name() : null)
                 .authorUsername(work.getAuthor().getUsername())
                 .authorId(work.getAuthor().getId())
                 .createdAt(work.getCreatedAt())
-                .averageRating(avg)
-                .ratingsCount(count)
-                .musicMarkers(markers)
-                .comments(comments)
+                .averageRating(avg).ratingsCount(count)
+                .musicMarkers(markers).comments(comments)
                 .build();
     }
 
-    // Короткий варіант (без повного тексту та коментарів — для списків)
     private WorkResponse toResponseShort(Work work) {
         Double avg = ratingRepository.findAverageScoreByWorkId(work.getId());
         long count = ratingRepository.countByWorkId(work.getId());
         String preview = work.getContent().length() > 200
-                ? work.getContent().substring(0, 200) + "..."
-                : work.getContent();
+                ? work.getContent().substring(0, 200) + "..." : work.getContent();
 
         return WorkResponse.builder()
-                .id(work.getId())
-                .title(work.getTitle())
-                .content(preview)
+                .id(work.getId()).title(work.getTitle()).content(preview)
                 .description(work.getDescription())
                 .genre(work.getGenre() != null ? work.getGenre().name() : null)
                 .authorUsername(work.getAuthor().getUsername())
                 .authorId(work.getAuthor().getId())
                 .createdAt(work.getCreatedAt())
-                .averageRating(avg)
-                .ratingsCount(count)
+                .averageRating(avg).ratingsCount(count)
                 .build();
     }
 }

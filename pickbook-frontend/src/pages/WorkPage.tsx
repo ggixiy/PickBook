@@ -4,28 +4,31 @@ import { getWork, addComment, rateWork, deleteWork } from '../api/works';
 import { useAuth } from '../context/AuthContext';
 import type { Work, MusicMarker } from '../types';
 
-// Оголошуємо глобальний YT який завантажується через script tag в index.html
 declare const YT: any;
+
+function extractYouTubeId(url: string): string | null {
+  const match = url.match(/(?:v=|youtu\.be\/|embed\/)([^&\s?]+)/);
+  return match ? match[1] : null;
+}
 
 export default function WorkPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user, isAuthor } = useAuth();
+  const { user } = useAuth();
 
   const [work, setWork] = useState<Work | null>(null);
   const [loading, setLoading] = useState(true);
-
-  // Стан музичного плеєра
   const [currentMarker, setCurrentMarker] = useState<MusicMarker | null>(null);
-  const [playerReady, setPlayerReady] = useState(false);
+  const [bannerVisible, setBannerVisible] = useState(false);
+
   const playerRef = useRef<any>(null);
   const playerDivRef = useRef<HTMLDivElement>(null);
+  const playerReadyRef = useRef(false);
+  const activeMarkerRef = useRef<MusicMarker | null>(null);
+  const fadeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Коментарі
   const [commentText, setCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
-
-  // Рейтинг
   const [myRating, setMyRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
 
@@ -36,22 +39,18 @@ export default function WorkPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  // Ініціалізуємо YouTube плеєр після завантаження твору
   useEffect(() => {
-    if (!work || !work.musicMarkers?.length) return;
+    if (!work?.musicMarkers?.length) return;
 
     const initPlayer = () => {
-      if (!playerDivRef.current) return;
+      if (!playerDivRef.current || playerRef.current) return;
       playerRef.current = new YT.Player(playerDivRef.current, {
-        height: '0', width: '0', // Прихований плеєр
+        height: '0', width: '0',
         playerVars: { autoplay: 0, controls: 0 },
-        events: {
-          onReady: () => setPlayerReady(true),
-        },
+        events: { onReady: () => { playerReadyRef.current = true; } },
       });
     };
 
-    // YT може ще не бути завантажений
     if (typeof YT !== 'undefined' && YT.Player) {
       initPlayer();
     } else {
@@ -59,55 +58,140 @@ export default function WorkPage() {
     }
 
     return () => {
+      if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
       playerRef.current?.destroy();
+      playerRef.current = null;
+      playerReadyRef.current = false;
     };
   }, [work]);
 
-  // Слідкуємо за скролом і запускаємо музику в потрібний момент
+  // Плавне затухання і зупинка
+  const fadeOutAndStop = useCallback(() => {
+    if (!playerRef.current) return;
+    if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+
+    let vol = 100;
+    fadeIntervalRef.current = setInterval(() => {
+      vol -= 12;
+      if (vol <= 0) {
+        clearInterval(fadeIntervalRef.current!);
+        playerRef.current?.stopVideo();
+        playerRef.current?.setVolume(100);
+        setCurrentMarker(null);
+        setBannerVisible(false);
+        activeMarkerRef.current = null;
+      } else {
+        playerRef.current?.setVolume(vol);
+      }
+    }, 60); // ~800ms загальний час затухання
+  }, []);
+
+  // Запуск треку
+  const playMarker = useCallback((marker: MusicMarker) => {
+    if (!playerRef.current || !playerReadyRef.current) return;
+    if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+
+    const videoId = extractYouTubeId(marker.musicUrl);
+    if (!videoId) return;
+
+    playerRef.current.setVolume(100);
+    playerRef.current.loadVideoById({
+      videoId,
+      startSeconds: marker.startTime ?? 0,
+      endSeconds: marker.endTime ?? undefined,
+    });
+
+    setCurrentMarker(marker);
+    setBannerVisible(true);
+    activeMarkerRef.current = marker;
+  }, []);
+
   const handleScroll = useCallback(() => {
-    if (!work?.musicMarkers?.length || !playerReady) return;
+    if (!work?.musicMarkers?.length || !playerReadyRef.current) return;
 
-    // Знаходимо який символ зараз приблизно видно на екрані
-    const textEl = document.getElementById('work-text');
-    if (!textEl) return;
+    const screenMiddle = window.innerHeight / 2;
+    const screenTop = 0;
 
-    const textRect = textEl.getBoundingClientRect();
-    const screenCenter = window.innerHeight / 2;
-    const relativePos = screenCenter - textRect.top;
-    const charWidth = textEl.scrollWidth / (work.content.length || 1);
-    const lineHeight = 32; // px
-    const charsPerLine = Math.floor(textEl.clientWidth / (charWidth * 6));
-    const linesScrolled = relativePos / lineHeight;
-    const approxCharPos = Math.floor(linesScrolled * charsPerLine);
+    const markNodes = document.querySelectorAll('mark[data-marker-idx]');
+    let bestMarker: MusicMarker | null = null;
 
-    // Знаходимо найближчу мітку яку ще не відтворювали
-    const triggered = work.musicMarkers
-      .filter(m => m.charPosition <= approxCharPos)
-      .sort((a, b) => b.charPosition - a.charPosition)[0];
+    markNodes.forEach(node => {
+      const rect = node.getBoundingClientRect();
+      const markerIdx = parseInt(node.getAttribute('data-marker-idx') || '-1', 10);
+      const m = work.musicMarkers![markerIdx];
+      if (!m || !m.musicUrl) return;
 
-    if (triggered && triggered !== currentMarker) {
-      setCurrentMarker(triggered);
-      playYouTube(triggered.musicUrl);
+      if (rect.top <= screenMiddle && rect.bottom >= screenTop) {
+        bestMarker = m;
+      }
+    });
+
+    if (bestMarker !== activeMarkerRef.current) {
+      if (bestMarker === null) {
+        fadeOutAndStop();
+      } else {
+        playMarker(bestMarker);
+      }
     }
-  }, [work, playerReady, currentMarker]);
+  }, [work, fadeOutAndStop, playMarker]);
 
   useEffect(() => {
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, [handleScroll]);
 
-  const playYouTube = (url: string) => {
-    if (!playerRef.current) return;
-    // Витягуємо video ID з URL
-    const match = url.match(/(?:v=|youtu\.be\/)([^&\s]+)/);
-    if (match) {
-      playerRef.current.loadVideoById(match[1]);
-    }
+  const stopMusic = () => {
+    if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+    playerRef.current?.stopVideo();
+    playerRef.current?.setVolume(100);
+    setCurrentMarker(null);
+    setBannerVisible(false);
+    activeMarkerRef.current = null;
   };
 
-  const stopMusic = () => {
-    playerRef.current?.stopVideo();
-    setCurrentMarker(null);
+  // Рендер тексту — в режимі читання підсвічення лише коли музика грає для цієї зони
+  const renderText = () => {
+    if (!work) return null;
+    const markers = work.musicMarkers;
+    if (!markers?.length) return <>{work.content}</>;
+
+    const sorted = [...markers].sort((a, b) => a.charPosition - b.charPosition);
+    const segments: { text: string; markerIdx: number | null }[] = [];
+    let lastPos = 0;
+
+    sorted.forEach(m => {
+      const originalIdx = markers.indexOf(m);
+      const endPos = m.charPositionEnd ?? m.charPosition + 200;
+      if (m.charPosition > lastPos) {
+        segments.push({ text: work.content.slice(lastPos, m.charPosition), markerIdx: null });
+      }
+      segments.push({ text: work.content.slice(m.charPosition, endPos), markerIdx: originalIdx });
+      lastPos = endPos;
+    });
+    if (lastPos < work.content.length) {
+      segments.push({ text: work.content.slice(lastPos), markerIdx: null });
+    }
+
+    return (
+      <>
+        {segments.map((seg, i) => {
+          if (seg.markerIdx === null) return <span key={i}>{seg.text}</span>;
+          const marker = markers[seg.markerIdx];
+          const isActive = currentMarker === marker;
+
+          return (
+            <mark
+              key={i}
+              data-marker-idx={seg.markerIdx}
+              className={`editor-marker ${isActive ? 'editor-marker-active' : ''}`}
+              style={{ color: 'inherit', padding: '0 2px' }}
+            >
+              {seg.text}
+            </mark>
+          );
+        })}
+      </>
+    );
   };
 
   const handleComment = async (e: React.FormEvent) => {
@@ -143,35 +227,30 @@ export default function WorkPage() {
 
   return (
     <div style={{ maxWidth: 720, margin: '0 auto' }}>
-      {/* Прихований YouTube плеєр */}
       <div ref={playerDivRef} style={{ display: 'none' }} />
 
-      {/* Музичний банер — з'являється коли грає музика */}
-      {currentMarker && (
-        <div style={{
-          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-          background: 'var(--bg2)', border: '1px solid var(--purple)',
-          borderRadius: 40, padding: '10px 20px',
-          display: 'flex', alignItems: 'center', gap: 12,
-          zIndex: 200, boxShadow: '0 4px 24px rgba(139,92,246,0.3)',
-          animation: 'fadeIn 0.3s ease'
-        }}>
-          <span style={{ fontSize: 18 }}>♪</span>
-          <span style={{ fontSize: 14, color: 'var(--text)' }}>
-            {currentMarker.trackTitle || 'Зараз грає...'}
-          </span>
-          <button onClick={stopMusic}
-            style={{ background: 'none', color: 'var(--text2)', padding: '0 4px', fontSize: 16 }}>
-            ✕
-          </button>
-        </div>
-      )}
+      {/* Музичний банер з плавною появою/зникненням */}
+      <div style={{
+        position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+        background: 'var(--bg2)', border: '1px solid var(--purple)',
+        borderRadius: 40, padding: '10px 20px',
+        display: 'flex', alignItems: 'center', gap: 12,
+        zIndex: 200, boxShadow: '0 4px 24px rgba(139,92,246,0.3)',
+        opacity: bannerVisible ? 1 : 0,
+        pointerEvents: bannerVisible ? 'auto' : 'none',
+        transition: 'opacity 0.6s ease',
+      }}>
+        <span style={{ fontSize: 18 }}>♪</span>
+        <span style={{ fontSize: 14 }}>
+          {currentMarker?.trackTitle || 'Зараз грає...'}
+        </span>
+        <button onClick={stopMusic}
+          style={{ background: 'none', color: 'var(--text2)', padding: '0 4px', fontSize: 16 }}>
+          ✕
+        </button>
+      </div>
 
-      <style>{`
-        @keyframes fadeIn { from { opacity: 0; transform: translateX(-50%) translateY(10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
-      `}</style>
-
-      {/* Шапка твору */}
+      {/* Шапка */}
       <div style={{ marginBottom: 32 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <h1 style={{ fontSize: 36, lineHeight: 1.3, marginBottom: 12 }}>{work.title}</h1>
@@ -190,40 +269,35 @@ export default function WorkPage() {
           {work.genre && <span className="muted">· {work.genre}</span>}
           {work.musicMarkers?.length ? (
             <span style={{ color: 'var(--purple)', fontSize: 13 }}>
-              ♪ {work.musicMarkers.length} муз. {work.musicMarkers.length === 1 ? 'мітка' : 'мітки'}
+              ♪ {work.musicMarkers.length} {work.musicMarkers.length === 1 ? 'мітка' : 'мітки'}
             </span>
           ) : null}
-          {work.averageRating && (
+          {work.averageRating ? (
             <span className="muted">★ {work.averageRating.toFixed(1)} ({work.ratingsCount})</span>
-          )}
+          ) : null}
         </div>
 
         {work.description && (
           <p style={{ color: 'var(--text2)', marginTop: 12, fontStyle: 'italic' }}>{work.description}</p>
         )}
-
         {work.musicMarkers?.length ? (
           <p className="muted" style={{ marginTop: 8, fontSize: 13 }}>
-            🎵 Музика почнеться автоматично під час читання
+            🎵 Музика вмикається автоматично під час читання
           </p>
         ) : null}
       </div>
 
-      {/* Текст твору */}
+      {/* Текст */}
       <div id="work-text" style={{
-        fontFamily: 'Georgia, serif',
-        fontSize: 18,
-        lineHeight: 2,
-        color: 'var(--text)',
-        whiteSpace: 'pre-wrap',
-        marginBottom: 48,
+        fontFamily: 'Georgia, serif', fontSize: 18,
+        lineHeight: 2, color: 'var(--text)',
+        whiteSpace: 'pre-wrap', marginBottom: 48,
       }}>
-        {work.content}
+        {renderText()}
       </div>
 
       <hr style={{ border: 'none', borderTop: '1px solid var(--border)', marginBottom: 32 }} />
 
-      {/* Оцінка */}
       {user && (
         <div style={{ marginBottom: 32 }}>
           <h3 style={{ fontSize: 16, marginBottom: 12 }}>Ваша оцінка</h3>
@@ -243,23 +317,21 @@ export default function WorkPage() {
         </div>
       )}
 
-      {/* Коментарі */}
       <div>
         <h3 style={{ fontSize: 18, marginBottom: 20 }}>
           Коментарі {work.comments?.length ? `(${work.comments.length})` : ''}
         </h3>
-
         {user && (
           <form onSubmit={handleComment} style={{ marginBottom: 24 }}>
             <textarea value={commentText} onChange={e => setCommentText(e.target.value)}
               placeholder="Поділіться враженнями..."
               style={{ minHeight: 80, marginBottom: 8, resize: 'vertical' }} />
-            <button type="submit" className="btn-primary" disabled={submittingComment || !commentText.trim()}>
+            <button type="submit" className="btn-primary"
+              disabled={submittingComment || !commentText.trim()}>
               {submittingComment ? 'Відправка...' : 'Коментувати'}
             </button>
           </form>
         )}
-
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {work.comments?.map(c => (
             <div key={c.id} className="card" style={{ padding: 14 }}>

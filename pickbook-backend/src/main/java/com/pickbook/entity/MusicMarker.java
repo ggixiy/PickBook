@@ -12,20 +12,30 @@ public class MusicMarker {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Позиція в тексті (номер символу), де починає грати музика
-    // Наприклад: charPosition=1500 означає "запустити музику на 1500-му символі"
+    // Початок виділеного фрагменту (символ)
     @Column(name = "char_position", nullable = false)
     private Integer charPosition;
 
-    // Посилання на YouTube або SoundCloud
+    // Кінець виділеного фрагменту (символ)
+    @Column(name = "char_position_end")
+    private Integer charPositionEnd;
+
+    // Посилання на YouTube
     @Column(name = "music_url", nullable = false)
     private String musicUrl;
 
-    // Назва треку (для відображення читачу)
+    // Назва треку
     @Column(name = "track_title")
     private String trackTitle;
 
-    // До якого твору відноситься ця мітка
+    // З якої секунди відео починати (необов'язково)
+    @Column(name = "start_time")
+    private Integer startTime;
+
+    // До якої секунди відео грати (необов'язково)
+    @Column(name = "end_time")
+    private Integer endTime;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "work_id", nullable = false)
     private Work work;
