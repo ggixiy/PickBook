@@ -12,6 +12,7 @@ function extractYouTubeId(url: string): string | null {
 
 // Перетворює секунди в "хв:сек"
 function formatTime(seconds: number): string {
+  if (isNaN(seconds)) return '';
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${s.toString().padStart(2, '0')}`;
@@ -20,9 +21,15 @@ function formatTime(seconds: number): string {
 // Парсить "хв:сек" або просто секунди в число
 function parseTime(value: string): number | undefined {
   if (!value.trim()) return undefined;
+
+  // Дозволяємо вводити частинами, наприклад "1:" не повинно давати NaN
+  if (value.endsWith(':')) return undefined;
+
   if (value.includes(':')) {
-    const [m, s] = value.split(':').map(Number);
-    return m * 60 + (s || 0);
+    const [m, s] = value.split(':');
+    const mins = parseInt(m) || 0;
+    const secs = parseInt(s) || 0;
+    return mins * 60 + secs;
   }
   const n = parseInt(value);
   return isNaN(n) ? undefined : n;
@@ -42,6 +49,9 @@ export default function EditorPage() {
   const [markers, setMarkers] = useState<MusicMarker[]>([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Стан для введення часу (щоб користувач міг вводити "1:" без перетворень)
+  const [timeInputs, setTimeInputs] = useState<{ [key: string]: string }>({});
 
   // Music Player State
   const [currentMarker, setCurrentMarker] = useState<MusicMarker | null>(null);
@@ -90,6 +100,14 @@ export default function EditorPage() {
       playerReadyRef.current = false;
     };
   }, [markers]);
+
+  // Тригер для початкового налаштування підсвічення після того як завантажено файл і контент встановлено
+  useEffect(() => {
+      if (content && markers.length > 0) {
+          setTimeout(() => checkMusicScroll(), 100);
+      }
+  }, [content]);
+
 
   const fadeOutAndStop = useCallback(() => {
     if (!playerRef.current) return;
@@ -140,7 +158,7 @@ export default function EditorPage() {
   };
 
   const checkMusicScroll = useCallback(() => {
-    if (!markers?.length || !playerReadyRef.current || !backdropRef.current) return;
+    if (!markers?.length || !backdropRef.current) return;
 
     const textarea = textareaRef.current;
     if (!textarea) return;
@@ -263,6 +281,31 @@ export default function EditorPage() {
 
   const updateMarker = (i: number, field: keyof MusicMarker, value: any) => {
     setMarkers(m => m.map((marker, idx) => idx === i ? { ...marker, [field]: value } : marker));
+  };
+
+  const handleTimeChange = (i: number, field: 'startTime' | 'endTime', value: string) => {
+    setTimeInputs(prev => ({ ...prev, [`${i}-${field}`]: value }));
+    const parsed = parseTime(value);
+    if (parsed !== undefined || value === '') {
+       updateMarker(i, field, parsed);
+    }
+  };
+
+  const getTimeValue = (i: number, field: 'startTime' | 'endTime') => {
+    const key = `${i}-${field}`;
+    if (timeInputs[key] !== undefined) return timeInputs[key];
+    const val = markers[i][field];
+    return val !== undefined ? formatTime(val) : '';
+  };
+
+  const handleTimeBlur = (i: number, field: 'startTime' | 'endTime') => {
+      // При втраті фокусу форматуємо назад в хв:сек щоб виглядало красиво
+      const val = markers[i][field];
+      setTimeInputs(prev => {
+          const next = { ...prev };
+          delete next[`${i}-${field}`];
+          return next;
+      });
   };
 
   const removeMarker = (i: number) => {
@@ -583,15 +626,17 @@ export default function EditorPage() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                       <span className="muted" style={{ fontSize: 12, flexShrink: 0 }}>Грати з:</span>
                       <input
-                        value={m.startTime !== undefined ? formatTime(m.startTime) : ''}
-                        onChange={e => updateMarker(originalIdx, 'startTime', parseTime(e.target.value))}
+                        value={getTimeValue(originalIdx, 'startTime')}
+                        onChange={e => handleTimeChange(originalIdx, 'startTime', e.target.value)}
+                        onBlur={() => handleTimeBlur(originalIdx, 'startTime')}
                         placeholder="0:00"
                         style={{ width: 70 }}
                       />
                       <span className="muted" style={{ fontSize: 12, flexShrink: 0 }}>до:</span>
                       <input
-                        value={m.endTime !== undefined ? formatTime(m.endTime) : ''}
-                        onChange={e => updateMarker(originalIdx, 'endTime', parseTime(e.target.value))}
+                        value={getTimeValue(originalIdx, 'endTime')}
+                        onChange={e => handleTimeChange(originalIdx, 'endTime', e.target.value)}
+                        onBlur={() => handleTimeBlur(originalIdx, 'endTime')}
                         placeholder="необов'язково"
                         style={{ width: 120 }}
                       />

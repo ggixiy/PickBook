@@ -140,6 +140,13 @@ export default function WorkPage() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [handleScroll]);
 
+  // Тригер перевірки підсвічення при завантаженні або зміні розмірів вікна
+  useEffect(() => {
+      if (work) {
+          setTimeout(handleScroll, 100);
+      }
+  }, [work, handleScroll]);
+
   const stopMusic = () => {
     if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
     playerRef.current?.stopVideo();
