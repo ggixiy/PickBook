@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import logo from '../assets/logo.png';
 
 export default function Navbar() {
   const { user, logout, isAuthor } = useAuth();
@@ -23,15 +24,16 @@ export default function Navbar() {
       top: 0,
       zIndex: 100,
     }}>
-      {/* Логотип */}
       <Link to="/" style={{
-        fontSize: 20,
-        fontFamily: 'Georgia, serif',
-        color: 'var(--purple)',
-        fontWeight: 'normal',
-        textDecoration: 'none'
-      }}>
-        📖 PickBook
+          display: 'flex',
+          alignItems: 'center',
+          fontSize: 20,
+          fontFamily: 'Georgia, serif',
+          color: 'var(--purple)',
+          fontWeight: 'normal',
+          textDecoration: 'none'}}>
+        <img src={logo} alt="logo"  style={{ height: 32, marginRight: 8 }} />
+        <span style={{ marginLeft: 10 }}>PickBook</span>
       </Link>
 
       {/* Навігація */}
